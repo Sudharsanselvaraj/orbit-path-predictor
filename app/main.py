@@ -1,12 +1,30 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Body
+from pydantic import BaseModel
+from typing import Optional
+
 from app.model import predict_safe_path
 
-app = FastAPI(title="Satellite Trajectory API")
+app = FastAPI(title="AI Path Trajectory Predictor", version="0.2.0")
+
+class PredictRequest(BaseModel):
+    # Accept ANY of these styles:
+    #  - "1 ... 2 ..." single line
+    #  - "L1\nL2"
+    #  - "NAME\nL1\nL2"
+    satellite_tle: str
+    debris_tle: str
+    horizon_minutes: Optional[int] = 180
+    step_seconds: Optional[int] = 60
 
 @app.get("/")
 def root():
-    return {"message": "🚀 Satellite Trajectory API is running", "endpoints": ["/predict"]}
+    return {"status": "ok", "service": "ai-path-trajectory-predictor", "post": "/predict"}
 
-@app.get("/predict")
-def predict(satellite_tle: str, debris_tle: str):
-    return predict_safe_path(satellite_tle, debris_tle)
+@app.post("/predict")
+def predict(req: PredictRequest = Body(...)):
+    return predict_safe_path(
+        satellite_tle=req.satellite_tle,
+        debris_tle=req.debris_tle,
+        horizon_minutes=req.horizon_minutes,
+        step_seconds=req.step_seconds
+    )
