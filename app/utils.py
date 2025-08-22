@@ -10,5 +10,5 @@ def propagate_orbit(tle_data):
     return r  # Position vector
 
 def generate_safe_tle(original_tle, maneuver):
-    """Generate a dummy safe TLE (replace with real maneuver logic)."""
-    return original_tle  # For now, returning original until real logic added
+    """Generate a dummy safe TLE (replace with real logic)."""
+    return original_tle
