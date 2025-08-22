@@ -1,11 +1,9 @@
-from __future__ import annotations
 from typing import Dict, Any
-
 from app.utils import (
     propagate_positions,
     nearest_approach_km,
     generate_safe_tle,
-    normalize_tle_block,
+    normalize_tle_block
 )
 
 DEFAULT_HORIZON_MIN = 180
@@ -26,20 +24,20 @@ def predict_safe_path(satellite_tle: str,
                       debris_tle: str,
                       horizon_minutes: int = DEFAULT_HORIZON_MIN,
                       step_seconds: int = DEFAULT_STEP_SEC) -> Dict[str, Any]:
-    # 1) propagate
+    # 1) Propagate both TLEs
     sat_path = propagate_positions(satellite_tle, minutes=horizon_minutes, step_s=step_seconds)
     deb_path = propagate_positions(debris_tle, minutes=horizon_minutes, step_s=step_seconds)
 
-    # 2) closest approach
+    # 2) Closest approach
     dmin_km, meta = nearest_approach_km(sat_path, deb_path)
 
-    # 3) threshold by regime (use satellite regime)
+    # 3) Threshold by regime
     mm = _mean_motion_from_tle(satellite_tle)
     regime = _regime_from_mean_motion(mm)
     threshold = LEO_CA_THRESHOLD_KM if regime == "LEO" else GEO_CA_THRESHOLD_KM
     risky = dmin_km <= threshold
 
-    # 4) maneuver -> new TLE (very small retrograde tweak)
+    # 4) Maneuver -> new TLE
     if risky:
         maneuver = {
             "type": "retrograde_burn",
@@ -55,7 +53,7 @@ def predict_safe_path(satellite_tle: str,
         }
         safe_tle = satellite_tle
 
-    # 5) outputs (three TLEs)
+    # 5) Return three TLEs
     return {
         "risk": {
             "min_distance_km": round(dmin_km, 3),
