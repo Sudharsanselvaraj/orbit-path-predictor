@@ -1,27 +1,77 @@
-import pickle
-from app.utils import propagate_orbit, generate_safe_tle
+from __future__ import annotations
+from typing import Dict, Any
 
-# Load the trained model
-with open("models/maneuver_model.pkl", "rb") as f:
-    model = pickle.load(f)
+from app.utils import (
+    propagate_positions,
+    nearest_approach_km,
+    generate_safe_tle,
+    normalize_tle_block,
+)
 
-def predict_safe_path(satellite_tle, debris_tle):
-    """Predict safe trajectory maneuver."""
-    # Step 1: Propagate original orbits
-    sat_path = propagate_orbit(satellite_tle)
-    debris_path = propagate_orbit(debris_tle)
+DEFAULT_HORIZON_MIN = 180
+DEFAULT_STEP_SEC = 60
+LEO_CA_THRESHOLD_KM = 5.0
+GEO_CA_THRESHOLD_KM = 25.0
 
-    # Step 2: Prepare features (replace with real feature engineering)
-    features = [len(sat_path), len(debris_path)]
+def _mean_motion_from_tle(tle_text: str) -> float:
+    _, _, L2 = normalize_tle_block(tle_text)
+    return float(L2[52:63])
 
-    # Step 3: Predict safe maneuver
-    safe_path = model.predict([features])[0]
+def _regime_from_mean_motion(mm_rev_per_day: float) -> str:
+    if mm_rev_per_day > 10: return "LEO"
+    if mm_rev_per_day < 2:  return "GEO"
+    return "MEO"
 
-    # Step 4: Generate safe TLE
-    new_tle = generate_safe_tle(satellite_tle, safe_path)
+def predict_safe_path(satellite_tle: str,
+                      debris_tle: str,
+                      horizon_minutes: int = DEFAULT_HORIZON_MIN,
+                      step_seconds: int = DEFAULT_STEP_SEC) -> Dict[str, Any]:
+    # 1) propagate
+    sat_path = propagate_positions(satellite_tle, minutes=horizon_minutes, step_s=step_seconds)
+    deb_path = propagate_positions(debris_tle, minutes=horizon_minutes, step_s=step_seconds)
 
+    # 2) closest approach
+    dmin_km, meta = nearest_approach_km(sat_path, deb_path)
+
+    # 3) threshold by regime (use satellite regime)
+    mm = _mean_motion_from_tle(satellite_tle)
+    regime = _regime_from_mean_motion(mm)
+    threshold = LEO_CA_THRESHOLD_KM if regime == "LEO" else GEO_CA_THRESHOLD_KM
+    risky = dmin_km <= threshold
+
+    # 4) maneuver -> new TLE (very small retrograde tweak)
+    if risky:
+        maneuver = {
+            "type": "retrograde_burn",
+            "recommended_dv_mps": 1.0,
+            "note": "Tiny along-track tweak to desynchronize the TCA."
+        }
+        safe_tle = generate_safe_tle(satellite_tle, dv_mps=maneuver["recommended_dv_mps"])
+    else:
+        maneuver = {
+            "type": "no_action",
+            "recommended_dv_mps": 0.0,
+            "note": "Separation above threshold."
+        }
+        safe_tle = satellite_tle
+
+    # 5) outputs (three TLEs)
     return {
-        "satellite_tle": satellite_tle,
-        "debris_tle": debris_tle,
-        "predicted_safe_tle": new_tle
+        "risk": {
+            "min_distance_km": round(dmin_km, 3),
+            "tca": meta.get("time"),
+            "regime": regime,
+            "threshold_km": threshold,
+            "risky": risky
+        },
+        "maneuver": maneuver,
+        "tle_output": {
+            "satellite_tle": satellite_tle,
+            "debris_tle": debris_tle,
+            "predicted_safe_tle": safe_tle
+        },
+        "paths": {
+            "satellite_xyz_km": [p["r"] for p in sat_path],
+            "debris_xyz_km": [p["r"] for p in deb_path]
+        }
     }
