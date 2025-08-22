@@ -6,8 +6,6 @@ from app.utils import (
     normalize_tle_block
 )
 
-DEFAULT_HORIZON_MIN = 180
-DEFAULT_STEP_SEC = 60
 LEO_CA_THRESHOLD_KM = 5.0
 GEO_CA_THRESHOLD_KM = 25.0
 
@@ -17,16 +15,16 @@ def _mean_motion_from_tle(tle_text: str) -> float:
 
 def _regime_from_mean_motion(mm_rev_per_day: float) -> str:
     if mm_rev_per_day > 10: return "LEO"
-    if mm_rev_per_day < 2:  return "GEO"
+    if mm_rev_per_day < 2: return "GEO"
     return "MEO"
 
 def predict_safe_path(satellite_tle: str,
                       debris_tle: str,
-                      horizon_minutes: int = DEFAULT_HORIZON_MIN,
-                      step_seconds: int = DEFAULT_STEP_SEC) -> Dict[str, Any]:
+                      horizon_minutes: int = 60,
+                      step_seconds: int = 30) -> Dict[str, Any]:
     # 1) Propagate both TLEs
-    sat_path = propagate_positions(satellite_tle, minutes=horizon_minutes, step_s=step_seconds)
-    deb_path = propagate_positions(debris_tle, minutes=horizon_minutes, step_s=step_seconds)
+    sat_path = propagate_positions(satellite_tle, horizon_minutes, step_seconds)
+    deb_path = propagate_positions(debris_tle, horizon_minutes, step_seconds)
 
     # 2) Closest approach
     dmin_km, meta = nearest_approach_km(sat_path, deb_path)
@@ -53,7 +51,7 @@ def predict_safe_path(satellite_tle: str,
         }
         safe_tle = satellite_tle
 
-    # 5) Return three TLEs
+    # 5) Return three TLEs and paths
     return {
         "risk": {
             "min_distance_km": round(dmin_km, 3),
