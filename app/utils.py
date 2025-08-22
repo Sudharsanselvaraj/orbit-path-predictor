@@ -1,3 +1,4 @@
+# utils.py
 import math
 import re
 from datetime import datetime, timedelta
@@ -61,12 +62,16 @@ def propagate_positions(tle_text: str, minutes: int = 60, step_s: int = 30) -> L
         jd, fr = jday(t.year, t.month, t.day, t.hour, t.minute, t.second + t.microsecond/1e6)
         e, r, v = sat.sgp4(jd, fr)
         if e == 0:
-            if any(math.isinf(x) or math.isnan(x) for x in r + v):
-                raise ValueError(f"Propagation produced invalid coordinates at {t}")
-            out.append({"t": t.isoformat()+"Z", "r": [float(x) for x in r], "v": [float(x) for x in v]})
+            out.append({
+                "t": t.isoformat() + "Z",
+                "r": sanitize_vector([float(x) for x in r]),
+                "v": sanitize_vector([float(x) for x in v])
+            })
     return out
 
 def nearest_approach_km(path_a: List[Dict], path_b: List[Dict]) -> Tuple[float, Dict]:
+    if not path_a or not path_b:
+        return -1.0, {}
     n = min(len(path_a), len(path_b))
     dmin = float("inf")
     kmin = -1
@@ -77,9 +82,9 @@ def nearest_approach_km(path_a: List[Dict], path_b: List[Dict]) -> Tuple[float, 
         if d < dmin:
             dmin = d
             kmin = i
-    meta = {}
-    if kmin >= 0:
-        meta = {"time": path_a[kmin]["t"], "sat_r": path_a[kmin]["r"], "deb_r": path_b[kmin]["r"], "index": kmin}
+    if dmin == float("inf"):
+        return -1.0, {}
+    meta = {"time": path_a[kmin]["t"], "sat_r": path_a[kmin]["r"], "deb_r": path_b[kmin]["r"], "index": kmin}
     return dmin, meta
 
 def generate_safe_tle(original_tle: str, dv_mps: float) -> str:
