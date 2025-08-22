@@ -2,32 +2,25 @@ from fastapi import FastAPI, Body
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-from app.model import predict_safe_path  # import from model.py
 
-# ---------------------------
-# App & CORS
-# ---------------------------
-app = FastAPI(title="AI Path Trajectory Predictor", version="0.2.1")
+from app.model import predict_safe_path
+
+app = FastAPI(title="AI Path Trajectory Predictor", version="0.3.0")
+
+# Enable CORS for all origins (adjust for production)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ---------------------------
-# Request Model
-# ---------------------------
 class PredictRequest(BaseModel):
     satellite_tle: str
     debris_tle: str
     horizon_minutes: Optional[int] = 60
     step_seconds: Optional[int] = 30
 
-# ---------------------------
-# Endpoints
-# ---------------------------
 @app.get("/")
 def root():
     return {"status": "ok", "service": "ai-path-trajectory-predictor", "post": "/predict"}
