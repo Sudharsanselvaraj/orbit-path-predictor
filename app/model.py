@@ -68,22 +68,21 @@ def predict_safe_path(satellite_tle, debris_tle, horizon_minutes=60, step_second
         safe_tle = f"{sat_name}\n{sat_l1}\n{sat_l2}"
 
     return {
-        "risk": {
-            "min_distance_km": round(dmin_km, 3),
-            "tca": meta.get("time"),
-            "regime": regime,
-            "threshold_km": threshold,
-            "risky": risky
-        },
-        "maneuver": maneuver,
-        "tle_output": {
-            "satellite_tle": f"{sat_name}\n{sat_l1}\n{sat_l2}",
-            "debris_tle": f"{deb_name}\n{deb_l1}\n{deb_l2}",
-            "predicted_safe_tle": safe_tle
-        }
+    "risk": {
+        "min_distance_km": round(dmin_km, 3),
+        "tca": meta.get("time"),
+        "regime": regime,
+        "threshold_km": threshold,
+        "risky": risky
     },
-        "paths": {
-            "satellite_xyz_km": [p["r"] for p in sat_path],
-            "debris_xyz_km": [p["r"] for p in deb_path]
-        }
+    "maneuver": maneuver,
+    "tle_output": {
+        "satellite_tle": f"{sat_name}\n{sat_l1}\n{sat_l2}",
+        "debris_tle": f"{deb_name}\n{deb_l1}\n{deb_l2}",
+        "predicted_safe_tle": safe_tle
+    },
+    "paths": {
+        "satellite_xyz_km": [p["r"] for p in sat_path],
+        "debris_xyz_km": [p["r"] for p in deb_path]
     }
+}
