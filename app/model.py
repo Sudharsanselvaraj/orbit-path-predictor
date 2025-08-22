@@ -1,52 +1,75 @@
 from typing import Dict, Any
-from app.utils import propagate_positions, nearest_approach_km, generate_safe_tle, validate_tle, sanitize_vector
+from app.utils import (
+    propagate_positions,
+    nearest_approach_km,
+    generate_safe_tle,
+    validate_tle
+)
+import math
 
 LEO_CA_THRESHOLD_KM = 5.0
 GEO_CA_THRESHOLD_KM = 25.0
 
-def predict_safe_path(satellite_tle: str, debris_tle: str, horizon_minutes: int = 60, step_seconds: int = 30) -> Dict[str, Any]:
-    # 1) Validate TLEs first
+def predict_safe_path(
+    satellite_tle: str,
+    debris_tle: str,
+    horizon_minutes: int = 60,
+    step_seconds: int = 30
+) -> Dict[str, Any]:
+    # 1) Validate TLEs
     try:
         sat_name, sat_l1, sat_l2 = validate_tle(satellite_tle)
         deb_name, deb_l1, deb_l2 = validate_tle(debris_tle)
     except Exception as e:
         return {"error": f"TLE validation failed: {str(e)}"}
 
-    # 2) Propagate positions safely
+    # 2) Propagate satellite and debris positions
     try:
-        sat_path = propagate_positions(f"{sat_name}\n{sat_l1}\n{sat_l2}", minutes=horizon_minutes, step_s=step_seconds)
-        deb_path = propagate_positions(f"{deb_name}\n{deb_l1}\n{deb_l2}", minutes=horizon_minutes, step_s=step_seconds)
+        sat_path = propagate_positions(f"{sat_name}\n{sat_l1}\n{sat_l2}",
+                                      minutes=horizon_minutes,
+                                      step_s=step_seconds)
+        deb_path = propagate_positions(f"{deb_name}\n{deb_l1}\n{deb_l2}",
+                                      minutes=horizon_minutes,
+                                      step_s=step_seconds)
     except Exception as e:
         return {"error": f"Propagation failed: {str(e)}"}
 
-    if not sat_path or not deb_path:
-        return {"error": "Propagation returned empty path"}
-
-    # 3) Closest approach
+    # 3) Calculate closest approach
     try:
         dmin_km, meta = nearest_approach_km(sat_path, deb_path)
+        # Handle infinite or NaN distances
+        if math.isinf(dmin_km) or math.isnan(dmin_km):
+            dmin_km = -1.0
     except Exception as e:
         return {"error": f"Closest approach calculation failed: {str(e)}"}
 
-    # 4) Determine regime
-    mm = float(sat_l2[52:63])
-    regime = "LEO" if mm > 10 else "GEO" if mm < 2 else "MEO"
-    threshold = LEO_CA_THRESHOLD_KM if regime == "LEO" else GEO_CA_THRESHOLD_KM
-    risky = dmin_km <= threshold
+    # 4) Determine orbital regime & threshold
+    try:
+        mm = float(sat_l2[52:63])
+        regime = "LEO" if mm > 10 else "GEO" if mm < 2 else "MEO"
+        threshold = LEO_CA_THRESHOLD_KM if regime == "LEO" else GEO_CA_THRESHOLD_KM
+        risky = dmin_km <= threshold and dmin_km >= 0
+    except Exception as e:
+        return {"error": f"Regime calculation failed: {str(e)}"}
 
-    # 5) Maneuver
+    # 5) Maneuver suggestion & safe TLE
     if risky:
         maneuver = {
             "type": "retrograde_burn",
             "recommended_dv_mps": 1.0,
             "note": "Tiny along-track tweak to desynchronize the TCA."
         }
-        safe_tle = generate_safe_tle(f"{sat_name}\n{sat_l1}\n{sat_l2}", dv_mps=maneuver["recommended_dv_mps"])
+        safe_tle = generate_safe_tle(f"{sat_name}\n{sat_l1}\n{sat_l2}",
+                                     dv_mps=maneuver["recommended_dv_mps"])
     else:
-        maneuver = {"type": "no_action", "recommended_dv_mps": 0.0, "note": "Separation above threshold."}
+        maneuver = {
+            "type": "no_action",
+            "recommended_dv_mps": 0.0,
+            "note": "Separation above threshold."
+        }
         safe_tle = f"{sat_name}\n{sat_l1}\n{sat_l2}"
 
-    # 6) Return sanitized paths to prevent JSON errors
+    # 6) Prepare final dictionary
     return {
         "risk": {
             "min_distance_km": round(dmin_km, 3),
@@ -62,7 +85,7 @@ def predict_safe_path(satellite_tle: str, debris_tle: str, horizon_minutes: int 
             "predicted_safe_tle": safe_tle
         },
         "paths": {
-            "satellite_xyz_km": [sanitize_vector(p["r"]) for p in sat_path],
-            "debris_xyz_km": [sanitize_vector(p["r"]) for p in deb_path]
+            "satellite_xyz_km": [p["r"] for p in sat_path],
+            "debris_xyz_km": [p["r"] for p in deb_path]
         }
     }
