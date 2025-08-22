@@ -1,11 +1,6 @@
+# model.py
 from typing import Dict, Any
-from app.utils import (
-    propagate_positions,
-    nearest_approach_km,
-    generate_safe_tle,
-    validate_tle
-)
-import math
+from app.utils import propagate_positions, nearest_approach_km, generate_safe_tle, validate_tle
 
 LEO_CA_THRESHOLD_KM = 5.0
 GEO_CA_THRESHOLD_KM = 25.0
@@ -16,51 +11,47 @@ def predict_safe_path(
     horizon_minutes: int = 60,
     step_seconds: int = 30
 ) -> Dict[str, Any]:
-    # 1) Validate TLEs
+
+    # --- Validate TLEs ---
     try:
         sat_name, sat_l1, sat_l2 = validate_tle(satellite_tle)
         deb_name, deb_l1, deb_l2 = validate_tle(debris_tle)
     except Exception as e:
-        return {"error": f"TLE validation failed: {str(e)}"}
+        return {"error": f"TLE validation failed: {str(e)}", "risk": {}, "maneuver": {}, "tle_output": {}, "paths": {}}
 
-    # 2) Propagate satellite and debris positions
+    # --- Propagate paths ---
     try:
-        sat_path = propagate_positions(f"{sat_name}\n{sat_l1}\n{sat_l2}",
-                                      minutes=horizon_minutes,
-                                      step_s=step_seconds)
-        deb_path = propagate_positions(f"{deb_name}\n{deb_l1}\n{deb_l2}",
-                                      minutes=horizon_minutes,
-                                      step_s=step_seconds)
+        sat_path = propagate_positions(f"{sat_name}\n{sat_l1}\n{sat_l2}", minutes=horizon_minutes, step_s=step_seconds)
+        deb_path = propagate_positions(f"{deb_name}\n{deb_l1}\n{deb_l2}", minutes=horizon_minutes, step_s=step_seconds)
     except Exception as e:
-        return {"error": f"Propagation failed: {str(e)}"}
+        return {"error": f"Propagation failed: {str(e)}", "risk": {}, "maneuver": {}, "tle_output": {}, "paths": {}}
 
-    # 3) Calculate closest approach
+    # --- Closest approach ---
     try:
         dmin_km, meta = nearest_approach_km(sat_path, deb_path)
-        # Handle infinite or NaN distances
-        if math.isinf(dmin_km) or math.isnan(dmin_km):
+        if dmin_km < 0 or dmin_km == float("inf") or dmin_km != dmin_km:  # NaN
             dmin_km = -1.0
+            meta = {}
     except Exception as e:
-        return {"error": f"Closest approach calculation failed: {str(e)}"}
+        return {"error": f"Closest approach failed: {str(e)}", "risk": {}, "maneuver": {}, "tle_output": {}, "paths": {}}
 
-    # 4) Determine orbital regime & threshold
+    # --- Regime & threshold ---
     try:
         mm = float(sat_l2[52:63])
         regime = "LEO" if mm > 10 else "GEO" if mm < 2 else "MEO"
         threshold = LEO_CA_THRESHOLD_KM if regime == "LEO" else GEO_CA_THRESHOLD_KM
-        risky = dmin_km <= threshold and dmin_km >= 0
+        risky = dmin_km >= 0 and dmin_km <= threshold
     except Exception as e:
-        return {"error": f"Regime calculation failed: {str(e)}"}
+        return {"error": f"Regime calculation failed: {str(e)}", "risk": {}, "maneuver": {}, "tle_output": {}, "paths": {}}
 
-    # 5) Maneuver suggestion & safe TLE
+    # --- Maneuver & safe TLE ---
     if risky:
         maneuver = {
             "type": "retrograde_burn",
             "recommended_dv_mps": 1.0,
             "note": "Tiny along-track tweak to desynchronize the TCA."
         }
-        safe_tle = generate_safe_tle(f"{sat_name}\n{sat_l1}\n{sat_l2}",
-                                     dv_mps=maneuver["recommended_dv_mps"])
+        safe_tle = generate_safe_tle(f"{sat_name}\n{sat_l1}\n{sat_l2}", dv_mps=maneuver["recommended_dv_mps"])
     else:
         maneuver = {
             "type": "no_action",
@@ -69,7 +60,6 @@ def predict_safe_path(
         }
         safe_tle = f"{sat_name}\n{sat_l1}\n{sat_l2}"
 
-    # 6) Prepare final dictionary
     return {
         "risk": {
             "min_distance_km": round(dmin_km, 3),
