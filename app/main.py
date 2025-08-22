@@ -1,21 +1,12 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI
 from app.model import predict_safe_path
 
-app = FastAPI(title="Satellite Trajectory Predictor")
-
-class TLEInput(BaseModel):
-    satellite_tle: str
-    debris_tle: str
+app = FastAPI(title="Satellite Trajectory API")
 
 @app.get("/")
-def home():
-    return {"message": "🚀 Satellite Trajectory Predictor API is running!"}
+def root():
+    return {"message": "🚀 Satellite Trajectory API is running", "endpoints": ["/predict"]}
 
-@app.post("/predict")
-def predict(input_data: TLEInput):
-    try:
-        result = predict_safe_path(input_data.satellite_tle, input_data.debris_tle)
-        return {"status": "ok", "result": result}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+@app.get("/predict")
+def predict(satellite_tle: str, debris_tle: str):
+    return predict_safe_path(satellite_tle, debris_tle)
