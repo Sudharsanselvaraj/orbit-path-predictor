@@ -1,6 +1,5 @@
 fastapi
 uvicorn
 sgp4
+numpy
 pydantic
-scikit-learn
-joblib
